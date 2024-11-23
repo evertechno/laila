@@ -34,6 +34,12 @@ if uploaded_file is not None:
     st.write("### Data Preview")
     st.write(data.head())
 
+    # Check for target column and show error if missing
+    if 'target' not in data.columns:
+        st.error("The 'target' column is not available in the dataset. Please ensure the dataset contains a column named 'target'.")
+    else:
+        st.write("Target column found!")
+
     # Data Filtering
     st.write("### Data Filtering:")
     column_filter = st.selectbox("Choose a column to filter:", data.columns)
@@ -47,7 +53,10 @@ if uploaded_file is not None:
     if st.checkbox("Apply Box-Cox Transformation"):
         numeric_columns = data.select_dtypes(include=[np.number]).columns
         for col in numeric_columns:
-            data[col], _ = stats.boxcox(data[col] + 1)  # Box-Cox transformation (handle zeros)
+            try:
+                data[col], _ = stats.boxcox(data[col] + 1)  # Box-Cox transformation (handle zeros)
+            except ValueError:
+                st.warning(f"Box-Cox transformation failed for column {col} due to non-positive values.")
         st.write(data.head())
 
     # Data Normalization/Standardization
@@ -58,15 +67,21 @@ if uploaded_file is not None:
     else:
         scaler = StandardScaler()
 
-    scaled_data = pd.DataFrame(scaler.fit_transform(data.select_dtypes(include=[np.number])))
-    st.write(scaled_data)
+    try:
+        scaled_data = pd.DataFrame(scaler.fit_transform(data.select_dtypes(include=[np.number])))
+        st.write(scaled_data)
+    except ValueError as e:
+        st.error(f"Error during scaling: {e}")
 
     # Anomaly Detection using Isolation Forest
     st.write("### Anomaly Detection:")
     if st.checkbox("Detect Anomalies using Isolation Forest"):
         clf = IsolationForest()
-        data['Anomaly'] = clf.fit_predict(data.select_dtypes(include=[np.number]))
-        st.write(data[data['Anomaly'] == -1])  # Show detected anomalies
+        try:
+            data['Anomaly'] = clf.fit_predict(data.select_dtypes(include=[np.number]))
+            st.write(data[data['Anomaly'] == -1])  # Show detected anomalies
+        except ValueError:
+            st.warning("Anomaly detection failed due to non-numeric data.")
 
     # Word Cloud for Text Data
     st.write("### Word Cloud:")
@@ -81,62 +96,77 @@ if uploaded_file is not None:
     st.write("### ROC Curve:")
     if st.checkbox("Generate ROC Curve for Classification Model"):
         if 'target' in data.columns:  # Check if target column exists
-            X = data.drop(columns=["target"])
-            y = data["target"]
-            X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2)
-            model = LogisticRegression()
-            model.fit(X_train, y_train)
-            y_pred = model.predict(X_test)
+            try:
+                X = data.drop(columns=["target"])
+                y = data["target"]
+                X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2)
+                model = LogisticRegression()
+                model.fit(X_train, y_train)
+                y_pred = model.predict(X_test)
 
-            fpr, tpr, _ = roc_curve(y_test, y_pred)
-            roc_auc = auc(fpr, tpr)
-            plt.figure()
-            plt.plot(fpr, tpr, color='darkorange', lw=2, label='ROC curve (area = %0.2f)' % roc_auc)
-            plt.plot([0, 1], [0, 1], color='navy', lw=2, linestyle='--')
-            plt.xlim([0.0, 1.0])
-            plt.ylim([0.0, 1.05])
-            plt.xlabel('False Positive Rate')
-            plt.ylabel('True Positive Rate')
-            plt.title('Receiver Operating Characteristic')
-            plt.legend(loc="lower right")
-            st.pyplot()
+                fpr, tpr, _ = roc_curve(y_test, y_pred)
+                roc_auc = auc(fpr, tpr)
+                plt.figure()
+                plt.plot(fpr, tpr, color='darkorange', lw=2, label='ROC curve (area = %0.2f)' % roc_auc)
+                plt.plot([0, 1], [0, 1], color='navy', lw=2, linestyle='--')
+                plt.xlim([0.0, 1.0])
+                plt.ylim([0.0, 1.05])
+                plt.xlabel('False Positive Rate')
+                plt.ylabel('True Positive Rate')
+                plt.title('Receiver Operating Characteristic')
+                plt.legend(loc="lower right")
+                st.pyplot()
+            except ValueError as e:
+                st.error(f"Error generating ROC curve: {e}")
         else:
-            st.error("The target column is not available in the dataset.")
+            st.error("The 'target' column is not available in the dataset.")
 
     # Feature Selection (Recursive Feature Elimination)
     st.write("### Feature Selection:")
     if st.checkbox("Apply Recursive Feature Elimination"):
         if 'target' in data.columns:
-            X = data.drop(columns=["target"])
-            y = data["target"]
-            selector = RFE(LogisticRegression(), n_features_to_select=5)
-            selector = selector.fit(X, y)
-            st.write(f"Selected Features: {X.columns[selector.support_]}")
+            try:
+                X = data.drop(columns=["target"])
+                y = data["target"]
+                selector = RFE(LogisticRegression(), n_features_to_select=5)
+                selector = selector.fit(X, y)
+                st.write(f"Selected Features: {X.columns[selector.support_]}")
+            except ValueError as e:
+                st.error(f"Error during feature selection: {e}")
         else:
-            st.error("The target column is not available in the dataset.")
+            st.error("The 'target' column is not available in the dataset.")
 
     # PCA for Dimensionality Reduction
     st.write("### PCA for Dimensionality Reduction:")
     if st.checkbox("Apply PCA"):
-        pca = PCA(n_components=2)
-        principalComponents = pca.fit_transform(data.select_dtypes(include=[np.number]))
-        pca_df = pd.DataFrame(principalComponents, columns=["Principal Component 1", "Principal Component 2"])
-        st.write(pca_df)
+        try:
+            pca = PCA(n_components=2)
+            principalComponents = pca.fit_transform(data.select_dtypes(include=[np.number]))
+            pca_df = pd.DataFrame(principalComponents, columns=["Principal Component 1", "Principal Component 2"])
+            st.write(pca_df)
+        except ValueError:
+            st.warning("PCA failed due to lack of numeric data.")
 
     # Clustering (KMeans)
     st.write("### Clustering (KMeans):")
     if st.checkbox("Apply KMeans Clustering"):
         k = st.slider("Select number of clusters", min_value=2, max_value=10)
-        kmeans = KMeans(n_clusters=k)
-        data['Cluster'] = kmeans.fit_predict(data.select_dtypes(include=[np.number]))
-        st.write(data.head())
+        try:
+            kmeans = KMeans(n_clusters=k)
+            data['Cluster'] = kmeans.fit_predict(data.select_dtypes(include=[np.number]))
+            st.write(data.head())
+        except ValueError:
+            st.warning("Clustering failed due to non-numeric data.")
 
     # Correlation Analysis
     st.write("### Correlation Analysis:")
     if st.checkbox("Show Correlation Heatmap"):
-        corr = data.corr()
-        sns.heatmap(corr, annot=True, cmap='coolwarm')
-        st.pyplot()
+        try:
+            corr = data.corr()
+            sns.heatmap(corr, annot=True, cmap='coolwarm')
+            st.pyplot()
+        except ValueError:
+            st.warning("Correlation analysis failed due to non-numeric data.")
 
     # Statistical T-test
     st.write("### Statistical Tests (T-Test):")
@@ -152,16 +182,19 @@ if uploaded_file is not None:
     st.write("### Predictive Model:")
     if st.checkbox("Run Linear Regression"):
         if 'target' in data.columns:
-            X = data.drop(columns=["target"])
-            y = data["target"]
-            X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2)
-            model = LogisticRegression()
-            model.fit(X_train, y_train)
-            y_pred = model.predict(X_test)
-            st.write(f"Mean Squared Error: {mean_squared_error(y_test, y_pred)}")
-            st.write(f"Mean Absolute Error: {mean_absolute_error(y_test, y_pred)}")
+            try:
+                X = data.drop(columns=["target"])
+                y = data["target"]
+                X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2)
+                model = LogisticRegression()
+                model.fit(X_train, y_train)
+                y_pred = model.predict(X_test)
+                st.write(f"Mean Squared Error: {mean_squared_error(y_test, y_pred)}")
+                st.write(f"Mean Absolute Error: {mean_absolute_error(y_test, y_pred)}")
+            except ValueError as e:
+                st.error(f"Error in predictive modeling: {e}")
         else:
-            st.error("The target column is not available in the dataset.")
+            st.error("The 'target' column is not available in the dataset.")
 
     # Data Imputation
     st.write("### Data Imputation:")
