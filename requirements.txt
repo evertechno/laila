@@ -1,4 +1,6 @@
-streamlit
-transformers
-torch  
-sentencepiece
+streamlit 
+google-generativeai 
+pandas 
+matplotlib 
+seaborn 
+scikit-learn
