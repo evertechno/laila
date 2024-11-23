@@ -13,7 +13,7 @@ from sklearn.metrics import mean_squared_error, r2_score
 import io
 from io import BytesIO
 from textblob import TextBlob
-import datetime
+from scipy.stats import ttest_ind
 
 # Configure the API key securely from Streamlit's secrets
 genai.configure(api_key=st.secrets["GOOGLE_API_KEY"])
@@ -58,6 +58,9 @@ if uploaded_file is not None:
     st.write("### Missing Values:")
     st.write(data.isnull().sum())
 
+    # Define numeric columns
+    numeric_columns = data.select_dtypes(include=[np.number]).columns
+
     # Missing Data Imputation (Mean/Median)
     st.write("### Impute Missing Data:")
     if st.checkbox("Impute Missing Data"):
@@ -92,14 +95,6 @@ if uploaded_file is not None:
         encoded_data = pd.get_dummies(data, columns=categorical_columns)
         st.write(f"One-Hot Encoded Data: {encoded_data.head()}")
 
-    # Advanced Data Sampling: Stratified Sampling
-    st.write("### Stratified Sampling:")
-    if st.checkbox("Stratified Sampling (by target)"):
-        stratify_col = st.selectbox("Select column to stratify by:", data.columns)
-        sample_size = st.slider("Select sample size:", 1, data.shape[0], 100)
-        stratified_data = data.groupby(stratify_col, group_keys=False).apply(lambda x: x.sample(sample_size))
-        st.write(f"Stratified Sample: {stratified_data.head()}")
-
     # K-Means Clustering
     st.write("### K-Means Clustering:")
     if st.checkbox("Perform K-Means Clustering"):
@@ -120,7 +115,7 @@ if uploaded_file is not None:
     st.write("### Time-Series Analysis:")
     if st.checkbox("Analyze Time-Series Data"):
         date_column = st.selectbox("Select date column for time-series analysis:", data.columns)
-        data[date_column] = pd.to_datetime(data[date_column])
+        data[date_column] = pd.to_datetime(data[date_column], errors='coerce')
         data.set_index(date_column, inplace=True)
         st.line_chart(data)
 
@@ -136,46 +131,20 @@ if uploaded_file is not None:
         predictions = model.predict(X_test)
         mse = mean_squared_error(y_test, predictions)
         r2 = r2_score(y_test, predictions)
-        st.write(f"Model Performance:\nMSE: {mse}\nR²: {r2}")
+        st.write(f"Mean Squared Error: {mse}")
+        st.write(f"R-squared: {r2}")
 
-    # Prediction and Forecasting
-    st.write("### Prediction and Forecasting:")
-    if st.checkbox("Make Predictions using Linear Regression"):
-        target_column = st.selectbox("Choose target variable for prediction:", data.columns)
-        X = data.drop(columns=[target_column])
-        y = data[target_column]
-        model = LinearRegression()
-        model.fit(X, y)
-        st.write("Model trained. Make a prediction.")
-        sample_input = st.text_area("Input data for prediction (as JSON):")
-        if sample_input:
-            sample_input = eval(sample_input)
-            prediction = model.predict(pd.DataFrame([sample_input]))
-            st.write(f"Prediction: {prediction}")
-
-    # Data Aggregation (GroupBy, Pivot Table)
-    st.write("### Data Aggregation:")
-    if st.checkbox("GroupBy Aggregation"):
-        group_column = st.selectbox("Select column to group by:", data.columns)
-        aggregation = data.groupby(group_column).mean()
-        st.write(f"Aggregated Data:\n{aggregation}")
-
-    # Statistical Tests: T-Test
+    # Statistical Tests (T-Test)
     st.write("### Perform Statistical Tests:")
     if st.checkbox("Perform T-Test"):
-        sample1 = st.selectbox("Select first sample column:", data.columns)
-        sample2 = st.selectbox("Select second sample column:", data.columns)
-        t_stat, p_val = st.t_test(data[sample1], data[sample2])
+        sample1_column = st.selectbox("Select first sample column:", data.columns)
+        sample2_column = st.selectbox("Select second sample column:", data.columns)
+        sample1 = data[sample1_column].dropna()
+        sample2 = data[sample2_column].dropna()
+        t_stat, p_val = ttest_ind(sample1, sample2)
         st.write(f"T-Statistic: {t_stat}, P-Value: {p_val}")
 
-    # Text Analysis (Sentiment Analysis using TextBlob)
-    st.write("### Text Analysis:")
-    if st.checkbox("Perform Sentiment Analysis"):
-        text_column = st.selectbox("Choose text column for sentiment analysis:", data.columns)
-        sentiment = data[text_column].apply(lambda x: TextBlob(str(x)).sentiment.polarity)
-        st.write(f"Sentiment Analysis Result:\n{sentiment.describe()}")
-
-    # Export Plots as Images/PDF
+    # Export Visualizations
     st.write("### Export Visualizations:")
     if st.checkbox("Export Visualization as PNG"):
         fig, ax = plt.subplots()
@@ -186,16 +155,7 @@ if uploaded_file is not None:
         buf.seek(0)
         st.download_button("Download PNG", buf, "plot.png")
 
-    # File Version Control (Backup)
-    st.write("### File Version Control:")
-    if st.checkbox("Enable Version Control"):
-        file_backup = st.file_uploader("Upload previous version to compare with current data", type=["csv", "xlsx"])
-        if file_backup is not None:
-            backup_data = load_data(file_backup)
-            diff_data = pd.concat([backup_data, data]).drop_duplicates(keep=False)
-            st.write(f"Changes in Data:\n{diff_data}")
-    
-    # AI Chat Interface for Data Analysis
+    # AI Chat Interface
     st.write("### AI Chat Interface for Data Analysis:")
     chat_prompt = st.text_input("Ask AI to analyze or explain the data:", "")
     if chat_prompt:
@@ -204,7 +164,7 @@ if uploaded_file is not None:
         response = model.generate_content(prompt)
         st.write(response.text)
 
-# General Prompt Input for AI (default interface)
+# General Prompt Input for AI
 st.write("### General AI Prompt")
 user_prompt = st.text_input("Enter your general prompt for AI:", "Best alternatives to JavaScript?")
 if st.button("Generate Response"):
