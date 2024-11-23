@@ -1,141 +1,139 @@
 import streamlit as st
-import google.generativeai as genai
 import pandas as pd
-import matplotlib.pyplot as plt
-import seaborn as sns
 import numpy as np
-from sklearn.preprocessing import StandardScaler, MinMaxScaler, OneHotEncoder
+import seaborn as sns
+import matplotlib.pyplot as plt
+from sklearn.preprocessing import StandardScaler, MinMaxScaler
 from sklearn.decomposition import PCA
 from sklearn.cluster import KMeans
 from sklearn.model_selection import train_test_split
-from sklearn.linear_model import LinearRegression
-from sklearn.metrics import mean_squared_error, r2_score
-import io
-from io import BytesIO
-from textblob import TextBlob
+from sklearn.linear_model import LogisticRegression
+from sklearn.metrics import accuracy_score, roc_curve, auc, mean_squared_error, mean_absolute_error
+from wordcloud import WordCloud
+from scipy import stats
+from sklearn.impute import SimpleImputer
+from sklearn.ensemble import IsolationForest
+from sklearn.feature_selection import RFE
 from scipy.stats import ttest_ind
+from io import BytesIO
+import google.generativeai as genai
 
-# Configure the API key securely from Streamlit's secrets
+# Configure the API key for Gemini AI
 genai.configure(api_key=st.secrets["GOOGLE_API_KEY"])
 
 # Streamlit App UI
-st.title("Ever AI - Advanced Data Extraction & Analysis")
-st.write("Use generative AI to analyze data and gain actionable insights.")
+st.title("Advanced Data Analysis and AI Insights")
+st.write("An interactive platform for data analysis with AI-powered insights.")
 
-# Sidebar for File Upload
-st.sidebar.title("Upload Data")
-uploaded_file = st.sidebar.file_uploader("Upload your CSV/Excel/JSON/Parquet file", type=["csv", "xlsx", "json", "parquet"])
-
-# Function to read data based on file type
-def load_data(file):
-    if file.name.endswith('.csv'):
-        return pd.read_csv(file)
-    elif file.name.endswith('.xlsx'):
-        return pd.read_excel(file)
-    elif file.name.endswith('.json'):
-        return pd.read_json(file)
-    elif file.name.endswith('.parquet'):
-        return pd.read_parquet(file)
-    else:
-        return None
-
-# Placeholder for file data and analysis options
+# File uploader
+uploaded_file = st.file_uploader("Upload your dataset", type=["csv", "xlsx", "json"])
 if uploaded_file is not None:
-    data = load_data(uploaded_file)
-    
-    # Display basic data info
-    st.write("### Uploaded Data Preview:")
+    data = pd.read_csv(uploaded_file)
+
+    # Display data preview
+    st.write("### Data Preview")
     st.write(data.head())
 
-    # Data Information & Exploration
-    st.write("### Data Overview:")
-    st.write(f"Number of rows: {data.shape[0]}")
-    st.write(f"Number of columns: {data.shape[1]}")
-    st.write("Data Types:")
-    st.write(data.dtypes)
-    
-    # Missing values summary
-    st.write("### Missing Values:")
-    st.write(data.isnull().sum())
+    # Data Filtering
+    st.write("### Data Filtering:")
+    column_filter = st.selectbox("Choose a column to filter:", data.columns)
+    filter_value = st.text_input(f"Filter rows where {column_filter} is:", "")
+    if filter_value:
+        filtered_data = data[data[column_filter] == filter_value]
+        st.write(filtered_data)
 
-    # Define numeric columns
-    numeric_columns = data.select_dtypes(include=[np.number]).columns
+    # Box-Cox Transformation
+    st.write("### Box-Cox Transformation:")
+    if st.checkbox("Apply Box-Cox Transformation"):
+        numeric_columns = data.select_dtypes(include=[np.number]).columns
+        for col in numeric_columns:
+            data[col], _ = stats.boxcox(data[col] + 1)  # Box-Cox transformation (handle zeros)
+        st.write(data.head())
 
-    # Missing Data Imputation (Mean/Median)
-    st.write("### Impute Missing Data:")
-    if st.checkbox("Impute Missing Data"):
-        strategy = st.radio("Choose Imputation Strategy:", ['Mean', 'Median', 'Mode'])
-        if strategy == 'Mean':
-            data = data.fillna(data.mean())
-        elif strategy == 'Median':
-            data = data.fillna(data.median())
-        else:
-            data = data.fillna(data.mode().iloc[0])
-        st.write("Missing data imputed.")
+    # Data Normalization/Standardization
+    st.write("### Data Normalization/Standardization:")
+    normalize_method = st.radio("Choose method:", ('Min-Max', 'Z-Score'))
+    if normalize_method == 'Min-Max':
+        scaler = MinMaxScaler()
+    else:
+        scaler = StandardScaler()
 
-    # Advanced Outlier Detection (Z-score method)
-    st.write("### Outlier Detection:")
-    if st.checkbox("Detect Outliers using Z-Score"):
-        threshold = st.slider("Z-score threshold:", 1.0, 5.0, 3.0)
-        z_scores = np.abs((data[numeric_columns] - data[numeric_columns].mean()) / data[numeric_columns].std())
-        outliers = (z_scores > threshold).sum()
-        st.write(f"Number of outliers: {outliers.sum()}")
+    scaled_data = pd.DataFrame(scaler.fit_transform(data.select_dtypes(include=[np.number])))
+    st.write(scaled_data)
 
-    # Feature Engineering: Polynomial Features (e.g., creating interaction terms)
-    st.write("### Feature Engineering:")
-    if st.checkbox("Generate Polynomial Features"):
-        degree = st.slider("Polynomial Degree:", 2, 5, 2)
-        poly = pd.DataFrame(StandardScaler().fit_transform(data[numeric_columns]) ** degree)
-        st.write("Polynomial features generated.")
-    
-    # Handling Categorical Data (One-Hot Encoding)
-    st.write("### One-Hot Encoding for Categorical Columns:")
-    if st.checkbox("One-Hot Encode Categorical Columns"):
-        categorical_columns = data.select_dtypes(include=['object']).columns
-        encoded_data = pd.get_dummies(data, columns=categorical_columns)
-        st.write(f"One-Hot Encoded Data: {encoded_data.head()}")
+    # Anomaly Detection using Isolation Forest
+    st.write("### Anomaly Detection:")
+    if st.checkbox("Detect Anomalies using Isolation Forest"):
+        clf = IsolationForest()
+        data['Anomaly'] = clf.fit_predict(data.select_dtypes(include=[np.number]))
+        st.write(data[data['Anomaly'] == -1])  # Show detected anomalies
 
-    # K-Means Clustering
-    st.write("### K-Means Clustering:")
-    if st.checkbox("Perform K-Means Clustering"):
-        n_clusters = st.slider("Number of clusters:", 2, 10, 3)
-        kmeans = KMeans(n_clusters=n_clusters)
-        data['Cluster'] = kmeans.fit_predict(data[numeric_columns])
-        st.write("Clusters assigned to data.")
+    # Word Cloud for Text Data
+    st.write("### Word Cloud:")
+    if st.checkbox("Generate Word Cloud"):
+        text_column = st.selectbox("Select text column for word cloud:", data.select_dtypes(include=['object']).columns)
+        wordcloud = WordCloud().generate(" ".join(data[text_column].dropna()))
+        plt.imshow(wordcloud, interpolation='bilinear')
+        plt.axis("off")
+        st.pyplot()
 
-    # Principal Component Analysis (PCA)
-    st.write("### Principal Component Analysis (PCA):")
+    # ROC Curve for Classification Models
+    st.write("### ROC Curve:")
+    if st.checkbox("Generate ROC Curve for Classification Model"):
+        X = data.drop(columns=["target"])
+        y = data["target"]
+        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2)
+        model = LogisticRegression()
+        model.fit(X_train, y_train)
+        y_pred = model.predict(X_test)
+
+        fpr, tpr, _ = roc_curve(y_test, y_pred)
+        roc_auc = auc(fpr, tpr)
+        plt.figure()
+        plt.plot(fpr, tpr, color='darkorange', lw=2, label='ROC curve (area = %0.2f)' % roc_auc)
+        plt.plot([0, 1], [0, 1], color='navy', lw=2, linestyle='--')
+        plt.xlim([0.0, 1.0])
+        plt.ylim([0.0, 1.05])
+        plt.xlabel('False Positive Rate')
+        plt.ylabel('True Positive Rate')
+        plt.title('Receiver Operating Characteristic')
+        plt.legend(loc="lower right")
+        st.pyplot()
+
+    # Feature Selection (Recursive Feature Elimination)
+    st.write("### Feature Selection:")
+    if st.checkbox("Apply Recursive Feature Elimination"):
+        X = data.drop(columns=["target"])
+        y = data["target"]
+        selector = RFE(LogisticRegression(), n_features_to_select=5)
+        selector = selector.fit(X, y)
+        st.write(f"Selected Features: {X.columns[selector.support_]}")
+
+    # PCA for Dimensionality Reduction
+    st.write("### PCA for Dimensionality Reduction:")
     if st.checkbox("Apply PCA"):
         pca = PCA(n_components=2)
-        pca_result = pca.fit_transform(data[numeric_columns])
-        st.write("PCA Components:")
-        st.write(pd.DataFrame(pca_result, columns=['PCA1', 'PCA2']))
+        principalComponents = pca.fit_transform(data.select_dtypes(include=[np.number]))
+        pca_df = pd.DataFrame(principalComponents, columns=["Principal Component 1", "Principal Component 2"])
+        st.write(pca_df)
 
-    # Time-Series Analysis (if date column exists)
-    st.write("### Time-Series Analysis:")
-    if st.checkbox("Analyze Time-Series Data"):
-        date_column = st.selectbox("Select date column for time-series analysis:", data.columns)
-        data[date_column] = pd.to_datetime(data[date_column], errors='coerce')
-        data.set_index(date_column, inplace=True)
-        st.line_chart(data)
+    # Clustering (KMeans)
+    st.write("### Clustering (KMeans):")
+    if st.checkbox("Apply KMeans Clustering"):
+        k = st.slider("Select number of clusters", min_value=2, max_value=10)
+        kmeans = KMeans(n_clusters=k)
+        data['Cluster'] = kmeans.fit_predict(data.select_dtypes(include=[np.number]))
+        st.write(data.head())
 
-    # Model Training Interface (e.g., Linear Regression)
-    st.write("### Model Training Interface:")
-    if st.checkbox("Train Simple ML Model (Linear Regression)"):
-        target_column = st.selectbox("Select target column:", data.columns)
-        X = data.drop(columns=[target_column])
-        y = data[target_column]
-        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2)
-        model = LinearRegression()
-        model.fit(X_train, y_train)
-        predictions = model.predict(X_test)
-        mse = mean_squared_error(y_test, predictions)
-        r2 = r2_score(y_test, predictions)
-        st.write(f"Mean Squared Error: {mse}")
-        st.write(f"R-squared: {r2}")
+    # Correlation Analysis
+    st.write("### Correlation Analysis:")
+    if st.checkbox("Show Correlation Heatmap"):
+        corr = data.corr()
+        sns.heatmap(corr, annot=True, cmap='coolwarm')
+        st.pyplot()
 
-    # Statistical Tests (T-Test)
-    st.write("### Perform Statistical Tests:")
+    # Statistical T-test
+    st.write("### Statistical Tests (T-Test):")
     if st.checkbox("Perform T-Test"):
         sample1_column = st.selectbox("Select first sample column:", data.columns)
         sample2_column = st.selectbox("Select second sample column:", data.columns)
@@ -144,19 +142,38 @@ if uploaded_file is not None:
         t_stat, p_val = ttest_ind(sample1, sample2)
         st.write(f"T-Statistic: {t_stat}, P-Value: {p_val}")
 
-    # Export Visualizations
+    # Predictive Model (Linear Regression)
+    st.write("### Predictive Model:")
+    if st.checkbox("Run Linear Regression"):
+        X = data.drop(columns=["target"])
+        y = data["target"]
+        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2)
+        model = LogisticRegression()
+        model.fit(X_train, y_train)
+        y_pred = model.predict(X_test)
+        st.write(f"Mean Squared Error: {mean_squared_error(y_test, y_pred)}")
+        st.write(f"Mean Absolute Error: {mean_absolute_error(y_test, y_pred)}")
+
+    # Data Imputation
+    st.write("### Data Imputation:")
+    if st.checkbox("Apply Imputation for Missing Values"):
+        imputer = SimpleImputer(strategy="mean")
+        imputed_data = imputer.fit_transform(data.select_dtypes(include=[np.number]))
+        st.write(pd.DataFrame(imputed_data, columns=data.select_dtypes(include=[np.number]).columns))
+
+    # Exporting Visualizations
     st.write("### Export Visualizations:")
     if st.checkbox("Export Visualization as PNG"):
         fig, ax = plt.subplots()
-        data[numeric_columns].plot(kind='box', ax=ax)
+        sns.boxplot(data=data.select_dtypes(include=[np.number]), ax=ax)
         st.pyplot(fig)
         buf = BytesIO()
         fig.savefig(buf, format="png")
         buf.seek(0)
-        st.download_button("Download PNG", buf, "plot.png")
+        st.download_button("Download PNG", buf, "boxplot.png")
 
-    # AI Chat Interface
-    st.write("### AI Chat Interface for Data Analysis:")
+    # Chat Interface for AI Insights
+    st.write("### AI Chat Interface for Data Insights:")
     chat_prompt = st.text_input("Ask AI to analyze or explain the data:", "")
     if chat_prompt:
         model = genai.GenerativeModel('gemini-1.5-flash')
@@ -164,14 +181,14 @@ if uploaded_file is not None:
         response = model.generate_content(prompt)
         st.write(response.text)
 
-# General Prompt Input for AI
-st.write("### General AI Prompt")
-user_prompt = st.text_input("Enter your general prompt for AI:", "Best alternatives to JavaScript?")
-if st.button("Generate Response"):
-    try:
-        model = genai.GenerativeModel('gemini-1.5-flash')
-        response = model.generate_content(user_prompt)
-        st.write("Response:")
-        st.write(response.text)
-    except Exception as e:
-        st.error(f"Error: {e}")
+    # General AI Prompt
+    st.write("### General AI Prompt")
+    user_prompt = st.text_input("Enter your general prompt for AI:", "Best alternatives to JavaScript?")
+    if st.button("Generate Response"):
+        try:
+            model = genai.GenerativeModel('gemini-1.5-flash')
+            response = model.generate_content(user_prompt)
+            st.write("Response:")
+            st.write(response.text)
+        except Exception as e:
+            st.error(f"Error: {e}")
