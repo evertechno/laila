@@ -80,34 +80,40 @@ if uploaded_file is not None:
     # ROC Curve for Classification Models
     st.write("### ROC Curve:")
     if st.checkbox("Generate ROC Curve for Classification Model"):
-        X = data.drop(columns=["target"])
-        y = data["target"]
-        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2)
-        model = LogisticRegression()
-        model.fit(X_train, y_train)
-        y_pred = model.predict(X_test)
+        if 'target' in data.columns:  # Check if target column exists
+            X = data.drop(columns=["target"])
+            y = data["target"]
+            X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2)
+            model = LogisticRegression()
+            model.fit(X_train, y_train)
+            y_pred = model.predict(X_test)
 
-        fpr, tpr, _ = roc_curve(y_test, y_pred)
-        roc_auc = auc(fpr, tpr)
-        plt.figure()
-        plt.plot(fpr, tpr, color='darkorange', lw=2, label='ROC curve (area = %0.2f)' % roc_auc)
-        plt.plot([0, 1], [0, 1], color='navy', lw=2, linestyle='--')
-        plt.xlim([0.0, 1.0])
-        plt.ylim([0.0, 1.05])
-        plt.xlabel('False Positive Rate')
-        plt.ylabel('True Positive Rate')
-        plt.title('Receiver Operating Characteristic')
-        plt.legend(loc="lower right")
-        st.pyplot()
+            fpr, tpr, _ = roc_curve(y_test, y_pred)
+            roc_auc = auc(fpr, tpr)
+            plt.figure()
+            plt.plot(fpr, tpr, color='darkorange', lw=2, label='ROC curve (area = %0.2f)' % roc_auc)
+            plt.plot([0, 1], [0, 1], color='navy', lw=2, linestyle='--')
+            plt.xlim([0.0, 1.0])
+            plt.ylim([0.0, 1.05])
+            plt.xlabel('False Positive Rate')
+            plt.ylabel('True Positive Rate')
+            plt.title('Receiver Operating Characteristic')
+            plt.legend(loc="lower right")
+            st.pyplot()
+        else:
+            st.error("The target column is not available in the dataset.")
 
     # Feature Selection (Recursive Feature Elimination)
     st.write("### Feature Selection:")
     if st.checkbox("Apply Recursive Feature Elimination"):
-        X = data.drop(columns=["target"])
-        y = data["target"]
-        selector = RFE(LogisticRegression(), n_features_to_select=5)
-        selector = selector.fit(X, y)
-        st.write(f"Selected Features: {X.columns[selector.support_]}")
+        if 'target' in data.columns:
+            X = data.drop(columns=["target"])
+            y = data["target"]
+            selector = RFE(LogisticRegression(), n_features_to_select=5)
+            selector = selector.fit(X, y)
+            st.write(f"Selected Features: {X.columns[selector.support_]}")
+        else:
+            st.error("The target column is not available in the dataset.")
 
     # PCA for Dimensionality Reduction
     st.write("### PCA for Dimensionality Reduction:")
@@ -145,14 +151,17 @@ if uploaded_file is not None:
     # Predictive Model (Linear Regression)
     st.write("### Predictive Model:")
     if st.checkbox("Run Linear Regression"):
-        X = data.drop(columns=["target"])
-        y = data["target"]
-        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2)
-        model = LogisticRegression()
-        model.fit(X_train, y_train)
-        y_pred = model.predict(X_test)
-        st.write(f"Mean Squared Error: {mean_squared_error(y_test, y_pred)}")
-        st.write(f"Mean Absolute Error: {mean_absolute_error(y_test, y_pred)}")
+        if 'target' in data.columns:
+            X = data.drop(columns=["target"])
+            y = data["target"]
+            X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2)
+            model = LogisticRegression()
+            model.fit(X_train, y_train)
+            y_pred = model.predict(X_test)
+            st.write(f"Mean Squared Error: {mean_squared_error(y_test, y_pred)}")
+            st.write(f"Mean Absolute Error: {mean_absolute_error(y_test, y_pred)}")
+        else:
+            st.error("The target column is not available in the dataset.")
 
     # Data Imputation
     st.write("### Data Imputation:")
