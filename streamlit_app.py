@@ -37,7 +37,14 @@ if uploaded_file is not None:
     # Check for target column and show error if missing
     if 'target' not in data.columns:
         st.error("The 'target' column is not available in the dataset. Please ensure the dataset contains a column named 'target'.")
+        target_column = st.text_input("Enter the name of the target column (if available):")
+        if target_column and target_column in data.columns:
+            st.success(f"Using '{target_column}' as the target column.")
+            target_column = target_column
+        else:
+            target_column = None
     else:
+        target_column = 'target'
         st.write("Target column found!")
 
     # Data Filtering
@@ -68,7 +75,10 @@ if uploaded_file is not None:
         scaler = StandardScaler()
 
     try:
-        scaled_data = pd.DataFrame(scaler.fit_transform(data.select_dtypes(include=[np.number])))
+        # Only apply scaling to numeric columns
+        numeric_data = data.select_dtypes(include=[np.number])
+        scaled_data = pd.DataFrame(scaler.fit_transform(numeric_data))
+        scaled_data.columns = numeric_data.columns  # Preserve column names
         st.write(scaled_data)
     except ValueError as e:
         st.error(f"Error during scaling: {e}")
@@ -78,7 +88,8 @@ if uploaded_file is not None:
     if st.checkbox("Detect Anomalies using Isolation Forest"):
         clf = IsolationForest()
         try:
-            data['Anomaly'] = clf.fit_predict(data.select_dtypes(include=[np.number]))
+            numeric_data = data.select_dtypes(include=[np.number])
+            data['Anomaly'] = clf.fit_predict(numeric_data)
             st.write(data[data['Anomaly'] == -1])  # Show detected anomalies
         except ValueError:
             st.warning("Anomaly detection failed due to non-numeric data.")
@@ -95,10 +106,10 @@ if uploaded_file is not None:
     # ROC Curve for Classification Models
     st.write("### ROC Curve:")
     if st.checkbox("Generate ROC Curve for Classification Model"):
-        if 'target' in data.columns:  # Check if target column exists
+        if target_column and target_column in data.columns:  # Check if target column exists
             try:
-                X = data.drop(columns=["target"])
-                y = data["target"]
+                X = data.drop(columns=[target_column])
+                y = data[target_column]
                 X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2)
                 model = LogisticRegression()
                 model.fit(X_train, y_train)
@@ -124,10 +135,10 @@ if uploaded_file is not None:
     # Feature Selection (Recursive Feature Elimination)
     st.write("### Feature Selection:")
     if st.checkbox("Apply Recursive Feature Elimination"):
-        if 'target' in data.columns:
+        if target_column and target_column in data.columns:
             try:
-                X = data.drop(columns=["target"])
-                y = data["target"]
+                X = data.drop(columns=[target_column])
+                y = data[target_column]
                 selector = RFE(LogisticRegression(), n_features_to_select=5)
                 selector = selector.fit(X, y)
                 st.write(f"Selected Features: {X.columns[selector.support_]}")
@@ -140,8 +151,9 @@ if uploaded_file is not None:
     st.write("### PCA for Dimensionality Reduction:")
     if st.checkbox("Apply PCA"):
         try:
+            numeric_data = data.select_dtypes(include=[np.number])
             pca = PCA(n_components=2)
-            principalComponents = pca.fit_transform(data.select_dtypes(include=[np.number]))
+            principalComponents = pca.fit_transform(numeric_data)
             pca_df = pd.DataFrame(principalComponents, columns=["Principal Component 1", "Principal Component 2"])
             st.write(pca_df)
         except ValueError:
@@ -152,8 +164,9 @@ if uploaded_file is not None:
     if st.checkbox("Apply KMeans Clustering"):
         k = st.slider("Select number of clusters", min_value=2, max_value=10)
         try:
+            numeric_data = data.select_dtypes(include=[np.number])
             kmeans = KMeans(n_clusters=k)
-            data['Cluster'] = kmeans.fit_predict(data.select_dtypes(include=[np.number]))
+            data['Cluster'] = kmeans.fit_predict(numeric_data)
             st.write(data.head())
         except ValueError:
             st.warning("Clustering failed due to non-numeric data.")
@@ -162,7 +175,8 @@ if uploaded_file is not None:
     st.write("### Correlation Analysis:")
     if st.checkbox("Show Correlation Heatmap"):
         try:
-            corr = data.corr()
+            numeric_data = data.select_dtypes(include=[np.number])
+            corr = numeric_data.corr()
             sns.heatmap(corr, annot=True, cmap='coolwarm')
             st.pyplot()
         except ValueError:
@@ -178,13 +192,13 @@ if uploaded_file is not None:
         t_stat, p_val = ttest_ind(sample1, sample2)
         st.write(f"T-Statistic: {t_stat}, P-Value: {p_val}")
 
-    # Predictive Model (Linear Regression)
+    # Predictive Model (Logistic Regression)
     st.write("### Predictive Model:")
-    if st.checkbox("Run Linear Regression"):
-        if 'target' in data.columns:
+    if st.checkbox("Run Logistic Regression"):
+        if target_column and target_column in data.columns:
             try:
-                X = data.drop(columns=["target"])
-                y = data["target"]
+                X = data.drop(columns=[target_column])
+                y = data[target_column]
                 X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2)
                 model = LogisticRegression()
                 model.fit(X_train, y_train)
@@ -195,42 +209,3 @@ if uploaded_file is not None:
                 st.error(f"Error in predictive modeling: {e}")
         else:
             st.error("The 'target' column is not available in the dataset.")
-
-    # Data Imputation
-    st.write("### Data Imputation:")
-    if st.checkbox("Apply Imputation for Missing Values"):
-        imputer = SimpleImputer(strategy="mean")
-        imputed_data = imputer.fit_transform(data.select_dtypes(include=[np.number]))
-        st.write(pd.DataFrame(imputed_data, columns=data.select_dtypes(include=[np.number]).columns))
-
-    # Exporting Visualizations
-    st.write("### Export Visualizations:")
-    if st.checkbox("Export Visualization as PNG"):
-        fig, ax = plt.subplots()
-        sns.boxplot(data=data.select_dtypes(include=[np.number]), ax=ax)
-        st.pyplot(fig)
-        buf = BytesIO()
-        fig.savefig(buf, format="png")
-        buf.seek(0)
-        st.download_button("Download PNG", buf, "boxplot.png")
-
-    # Chat Interface for AI Insights
-    st.write("### AI Chat Interface for Data Insights:")
-    chat_prompt = st.text_input("Ask AI to analyze or explain the data:", "")
-    if chat_prompt:
-        model = genai.GenerativeModel('gemini-1.5-flash')
-        prompt = f"Analyze the following dataset and answer: {chat_prompt}. Data: {data.to_dict()}"
-        response = model.generate_content(prompt)
-        st.write(response.text)
-
-    # General AI Prompt
-    st.write("### General AI Prompt")
-    user_prompt = st.text_input("Enter your general prompt for AI:", "Best alternatives to JavaScript?")
-    if st.button("Generate Response"):
-        try:
-            model = genai.GenerativeModel('gemini-1.5-flash')
-            response = model.generate_content(user_prompt)
-            st.write("Response:")
-            st.write(response.text)
-        except Exception as e:
-            st.error(f"Error: {e}")
